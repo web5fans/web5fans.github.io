@@ -4,6 +4,7 @@ import { Secp256k1 } from '@web5/crypto';
 import { AesGcm } from '@web5/crypto';
 import { Pbkdf2 } from '@web5/crypto';
 import { CryptoUtils } from '@web5/crypto';
+import { base58btc } from 'multiformats/bases/base58';
 
 interface KeyManagerProps {
   onKeyChange?: (keyPair: SigningKeyData | null) => void;
@@ -226,6 +227,30 @@ export const KeyManager: React.FC<KeyManagerProps> = ({ onKeyChange }) => {
     }
   };
 
+  const hexToBytes = (hex: string): Uint8Array => {
+    const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
+    const len = clean.length / 2;
+    const out = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      out[i] = parseInt(clean.substr(i * 2, 2), 16);
+    }
+    return out;
+  };
+
+  const getDidKey = (pubHex: string): string => {
+    try {
+      const pub = hexToBytes(pubHex);
+      const prefix = new Uint8Array([0xE7, 0x01]);
+      const prefixed = new Uint8Array(prefix.length + pub.length);
+      prefixed.set(prefix, 0);
+      prefixed.set(pub, prefix.length);
+      const mb = base58btc.encode(prefixed);
+      return `did:key:${mb}`;
+    } catch {
+      return '';
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
@@ -286,6 +311,21 @@ export const KeyManager: React.FC<KeyManagerProps> = ({ onKeyChange }) => {
               className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
             >
               复制公钥
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              DID Key (base58-btc)
+            </label>
+            <div className="bg-gray-50 p-3 rounded-lg border font-mono text-sm break-all">
+              {getDidKey(keyData.publicKey)}
+            </div>
+            <button
+              onClick={() => copyToClipboard(getDidKey(keyData.publicKey))}
+              className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+            >
+              复制 DID Key
             </button>
           </div>
 
