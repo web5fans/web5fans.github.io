@@ -19,6 +19,8 @@ export const KeyManager: React.FC<KeyManagerProps> = ({ onKeyChange }) => {
   const [passwordMode, setPasswordMode] = useState<'export' | 'import' | null>(null);
   const [passwordInput, setPasswordInput] = useState('');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [copiedPub, setCopiedPub] = useState(false);
+  const [copiedDid, setCopiedDid] = useState(false);
 
   useEffect(() => {
     const existingKey = storage.getKey();
@@ -81,12 +83,26 @@ export const KeyManager: React.FC<KeyManagerProps> = ({ onKeyChange }) => {
     }
   };
 
-  const copyToClipboard = async (text: string) => {
+  const copyPublicKey = async () => {
+    if (!keyData) return;
     try {
-      await navigator.clipboard.writeText(text);
-      setStatus({ type: 'success', message: '公钥已复制到剪贴板' });
-    } catch (error) {
-      console.error('Error copying to clipboard:', error);
+      await navigator.clipboard.writeText(keyData.publicKey);
+      setCopiedPub(true);
+      setTimeout(() => setCopiedPub(false), 2000);
+    } catch {
+      setStatus({ type: 'error', message: '复制失败，请手动复制' });
+    }
+  };
+
+  const copyDidKey = async () => {
+    if (!keyData) return;
+    const didKey = getDidKey(keyData.publicKey);
+    if (!didKey) return;
+    try {
+      await navigator.clipboard.writeText(didKey);
+      setCopiedDid(true);
+      setTimeout(() => setCopiedDid(false), 2000);
+    } catch {
       setStatus({ type: 'error', message: '复制失败，请手动复制' });
     }
   };
@@ -307,11 +323,14 @@ export const KeyManager: React.FC<KeyManagerProps> = ({ onKeyChange }) => {
               {keyData.publicKey}
             </div>
             <button
-              onClick={() => copyToClipboard(keyData.publicKey)}
+              onClick={copyPublicKey}
               className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
             >
               复制公钥
             </button>
+            {copiedPub && (
+              <div className="mt-1 text-green-600 text-sm">已复制公钥</div>
+            )}
           </div>
 
           <div>
@@ -322,11 +341,14 @@ export const KeyManager: React.FC<KeyManagerProps> = ({ onKeyChange }) => {
               {getDidKey(keyData.publicKey)}
             </div>
             <button
-              onClick={() => copyToClipboard(getDidKey(keyData.publicKey))}
+              onClick={copyDidKey}
               className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
             >
               复制 DID Key
             </button>
+            {copiedDid && (
+              <div className="mt-1 text-green-600 text-sm">已复制 DID Key</div>
+            )}
           </div>
 
           <div className="text-sm text-gray-500">

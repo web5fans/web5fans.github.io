@@ -1,11 +1,14 @@
 import React from 'react';
 import { KeyManager } from '../components/KeyManager';
+import { WalletManager } from '../components/WalletManager';
 import { SigningKeyData } from '../utils/storage';
+import { useWallet } from '@/provider/WalletProvider';
 
 export const Home: React.FC = () => {
   const handleKeyChange = (keyPair: SigningKeyData | null) => {
     console.log('Key changed:', keyPair);
   };
+  const { isConnected, address, balance, connect, disconnect } = useWallet();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700">
@@ -85,6 +88,14 @@ export const Home: React.FC = () => {
             </p>
           </div>
           <KeyManager onKeyChange={handleKeyChange} />
+          <WalletManager
+            isConnected={isConnected}
+            address={address}
+            balance={balance}
+            onConnect={connect}
+            onDisconnect={disconnect}
+            loading={false}
+          />
           
         </div>
       </section>
