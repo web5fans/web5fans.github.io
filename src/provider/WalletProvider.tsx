@@ -11,6 +11,7 @@ interface WalletContextValue {
   connect: () => Promise<void> | void;
   disconnect: () => Promise<void> | void;
   fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; capacity: string; data: string }>>;
+  destroyDidCell: (txHash: string, index: number) => Promise<string>;
 }
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -88,6 +89,39 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
       } catch {
         return [];
       }
+    },
+    destroyDidCell: async (txHash: string, index: number) => {
+      if (!signer) throw new Error('钱包未连接');
+      const didDepCell = network === 'mainnet' ? {
+        outPoint: {
+          txHash: '0xe2f74c56cdc610d2b9fe898a96a80118845f5278605d7f9ad535dad69ae015bf',
+          index: '0x0',
+        },
+        depType: 'code',
+      } : {
+        outPoint: {
+          txHash: '0x0e7a830e2d5ebd05cd45a55f93f94559edea0ef1237b7233f49f7facfb3d6a6c',
+          index: '0x0',
+        },
+        depType: 'code',
+      };
+      const destoryDidTx = ccc.Transaction.from({
+        cellDeps: [didDepCell,],
+        inputs: [
+          {
+            previousOutput: {
+              txHash,
+              index,
+            },
+            since: 0,
+          }
+        ],
+        outputs: [],
+      });
+      await destoryDidTx.completeInputsByCapacity(signer);
+      await destoryDidTx.completeFeeBy(signer);
+      const sent = await signer.sendTransaction(destoryDidTx);
+      return sent;
     },
   };
 
