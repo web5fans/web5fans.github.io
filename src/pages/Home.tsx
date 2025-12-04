@@ -18,7 +18,7 @@ export const Home: React.FC = () => {
           <nav className="flex justify-between items-center">
             <div className="text-white font-bold text-xl flex items-center">
               <span className="mr-2">🌐</span>
-              Web5 Fans
+              Web5 DID 工具箱
             </div>
           </nav>
         </div>
@@ -39,6 +39,12 @@ export const Home: React.FC = () => {
               className="bg-transparent border-2 border-white text-white font-semibold px-8 py-3 rounded-lg hover:bg-white hover:text-blue-800 transition-all duration-200"
             >
               密钥管理
+            </button>
+            <button 
+              onClick={() => document.getElementById('wallet-manager')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-transparent border-2 border-white text-white font-semibold px-8 py-3 rounded-lg hover:bg-white hover:text-blue-800 transition-all duration-200"
+            >
+              钱包管理
             </button>
           </div>
         </div>
@@ -88,6 +94,21 @@ export const Home: React.FC = () => {
             </p>
           </div>
           <KeyManager onKeyChange={handleKeyChange} />
+          
+        </div>
+      </section>
+
+      {/* wallet Manager Section */}
+      <section id="wallet-manager" className="py-16 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-white mb-4">
+              钱包连接管理器
+            </h2>
+            <p className="text-blue-100 text-lg">
+              连接您的 CKB 钱包以管理您的数字身份
+            </p>
+          </div>
           <WalletManager
             isConnected={isConnected}
             address={address}
