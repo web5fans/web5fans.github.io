@@ -10,6 +10,7 @@ interface WalletContextValue {
   network: Network;
   connect: () => Promise<void> | void;
   disconnect: () => Promise<void> | void;
+  fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; capacity: string; data: string }>>;
 }
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -62,6 +63,32 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
     network,
     connect,
     disconnect,
+    fetchLiveCells: async () => {
+      if (!signer || !address) return [];
+      try {
+        // 仅查询 did:ckb 相关 cells：根据 codehash 过滤
+        const didCodeHash = network === 'mainnet' ? '0x4a06164dc34dccade5afe3e847a97b6db743e79f5477fa3295acf02849c5984a' : '0x510150477b10d6ab551a509b71265f3164e9fd4137fcb5a4322f49f03092c7c5';
+        const cells = await signer.findCells({
+          script: {
+            codeHash: didCodeHash,
+            hashType: 'type',
+            args: "0x",
+          },
+        }, true, 'desc', 10);
+        const result: Array<{ txHash: string; index: number; capacity: string; data: string }> = [];
+        for await (const cell of cells) {
+          result.push({
+            txHash: cell.outPoint.txHash,
+            index: Number(cell.outPoint.index),
+            capacity: ccc.fixedPointToString(cell.cellOutput.capacity),
+            data: cell.outputData ?? '0x',
+          });
+        }
+        return result;
+      } catch {
+        return [];
+      }
+    },
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

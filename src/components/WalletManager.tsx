@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { DidCkbData } from '@/utils/didMolecule';
+import * as cbor from "@ipld/dag-cbor";
 
 interface Props {
   isConnected: boolean;
@@ -7,6 +9,8 @@ interface Props {
   onConnect: () => void;
   onDisconnect: () => void;
   loading: boolean;
+  network?: 'mainnet' | 'testnet';
+  onFetchLiveCells?: () => Promise<Array<{ txHash: string; index: number; capacity: string; data: string }>>;
 }
 
 export const WalletManager: React.FC<Props> = ({
@@ -16,8 +20,13 @@ export const WalletManager: React.FC<Props> = ({
   onConnect,
   onDisconnect,
   loading,
+  network,
+  onFetchLiveCells,
 }) => {
   const [copiedTip, setCopiedTip] = useState(false);
+  const [cells, setCells] = useState<Array<{ txHash: string; index: number; capacity: string; data: string }>>([]);
+  const [parsed, setParsed] = useState<Record<string, string>>({});
+  const [copiedDocKey, setCopiedDocKey] = useState<string | null>(null);
   const short = (addr?: string | null) => {
     if (!addr) return '';
     const a = addr.replace(/^\s+|\s+$/g, '');
@@ -34,13 +43,50 @@ export const WalletManager: React.FC<Props> = ({
       console.error('复制地址失败:', err);
     }
   };
+  const fetchCells = async () => {
+    if (!onFetchLiveCells) return;
+    const list = await onFetchLiveCells();
+    setCells(list);
+    const p: Record<string, string> = {};
+    for (const c of list) {
+      try {
+        const didData = DidCkbData.fromBytes(c.data);
+        const didDoc = didData.value.document;
+        const didDocJson = cbor.decode(new Uint8Array(didDoc.slice(2).match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))));
+        p[`${c.txHash}-${c.index}`] = JSON.stringify(didDocJson);
+      } catch (err) {
+        console.error('解析DID数据失败:', err);
+        p[`${c.txHash}-${c.index}`] = '解析失败';
+      }
+    }
+    setParsed(p);
+  };
+
+  const formatJson = (s: string) => {
+    try {
+      return JSON.stringify(JSON.parse(s), null, 2);
+    } catch {
+      return s;
+    }
+  };
+
+  const copyDoc = async (key: string) => {
+    const content = parsed[key] ? formatJson(parsed[key]) : '';
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedDocKey(key);
+      setTimeout(() => setCopiedDocKey(null), 2000);
+    } catch (err) {
+      console.error('复制 DID Document 失败:', err);
+    }
+  };
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
         <span className="mr-2">👛</span>
         钱包连接管理
       </h2>
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div className="text-sm text-gray-600">
           {isConnected ? (
             <div>
@@ -48,6 +94,7 @@ export const WalletManager: React.FC<Props> = ({
                 地址：<span className="font-mono">{short(address)}</span>
               </div>
               <div>余额：{balance ?? '加载中...'} CKB</div>
+              <div className="mt-1">网络：{network ?? '-'}</div>
               <button
                 onClick={copy}
                 className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
@@ -57,6 +104,43 @@ export const WalletManager: React.FC<Props> = ({
               {copiedTip && (
                 <div className="mt-1 text-green-600 text-sm">已复制完整地址</div>
               )}
+              <div className="mt-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <span>DID Cells：</span>
+                  <button onClick={fetchCells} className="text-blue-600 hover:text-blue-800 underline">刷新</button>
+                </div>
+                {cells.length === 0 ? (
+                  <div className="text-gray-500">暂无数据</div>
+                ) : (
+                  <ul className="space-y-2 font-mono text-xs">
+                    {cells.map((c, i) => (
+                      <li key={`${c.txHash}-${c.index}-${i}`}>
+                        <div>{c.txHash} [{c.index}] • {c.capacity} CKB</div>
+                        <div className="break-all text-gray-600">data: {c.data}</div>
+                        {parsed[`${c.txHash}-${c.index}`] && (
+                          <div className="text-gray-700">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold">DID Document</span>
+                              <button
+                                onClick={() => copyDoc(`${c.txHash}-${c.index}`)}
+                                className="text-blue-600 hover:text-blue-800 text-xs underline"
+                              >
+                                复制
+                              </button>
+                              {copiedDocKey === `${c.txHash}-${c.index}` && (
+                                <span className="text-green-600 text-xs">已复制</span>
+                              )}
+                            </div>
+                            <pre className="whitespace-pre-wrap break-words bg-gray-100 border rounded p-2 text-gray-800">
+                              {formatJson(parsed[`${c.txHash}-${c.index}`])}
+                            </pre>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           ) : (
             <div>未连接</div>

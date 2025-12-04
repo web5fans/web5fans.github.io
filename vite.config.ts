@@ -9,6 +9,9 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets'
   },
+  esbuild: {
+    target: 'es2022',
+  },
   plugins: [react()],
   resolve: {
     alias: {

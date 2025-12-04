@@ -9,6 +9,7 @@ export const Home: React.FC = () => {
     console.log('Key changed:', keyPair);
   };
   const { isConnected, address, balance, connect, disconnect } = useWallet();
+  const { network, fetchLiveCells } = useWallet();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700">
@@ -116,6 +117,8 @@ export const Home: React.FC = () => {
             onConnect={connect}
             onDisconnect={disconnect}
             loading={false}
+            network={network}
+            onFetchLiveCells={fetchLiveCells}
           />
           
         </div>
