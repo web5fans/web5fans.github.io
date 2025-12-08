@@ -84,7 +84,7 @@ export const WalletManager: React.FC<Props> = ({
     }
   };
 
-  const { destroyDidCell } = useWallet();
+  const { destroyDidCell, computeDid } = useWallet();
   const destroyCell = async (txHash: string, index: number) => {
     const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
     if (!ok) return;
@@ -96,6 +96,36 @@ export const WalletManager: React.FC<Props> = ({
       console.error('销毁失败:', err);
       alert((err as Error).message);
     }
+  };
+
+  const DidLine: React.FC<{ txHash: string; index: number }> = ({ txHash, index }) => {
+    const [did, setDid] = useState<string>('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const d = await computeDid(txHash, index);
+        setDid(d);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    return (
+      <div className="mt-2 text-xs text-gray-700">
+        <span className="font-semibold">DID：</span>
+        {did ? (
+          <span className="font-mono break-all">{did}</span>
+        ) : (
+          <button onClick={load} className="text-blue-600 underline">计算</button>
+        )}
+        {loading && <span className="ml-2 text-gray-500">计算中...</span>}
+        {error && <span className="ml-2 text-red-600">{error}</span>}
+      </div>
+    );
   };
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-6">
@@ -136,6 +166,7 @@ export const WalletManager: React.FC<Props> = ({
                         <div className="break-all text-gray-600">data: {c.data}</div>
                         {parsed[`${c.txHash}-${c.index}`] && (
                           <div className="text-gray-700">
+                            <DidLine txHash={c.txHash} index={c.index} />
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-semibold">DID Document</span>
                               <button
