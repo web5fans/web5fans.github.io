@@ -26,6 +26,7 @@ export const WalletManager: React.FC<Props> = ({
   const [copiedTip, setCopiedTip] = useState(false);
   const [didCells, setDIDCells] = useState<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>([]);
   const [copiedDocKey, setCopiedDocKey] = useState<string | null>(null);
+  const [copiedDidKey, setCopiedDidKey] = useState<string | null>(null);
   const [destroyed, setDestroyed] = useState<Record<string, { txHash: string; url: string }>>({});
   const shortAddr = (addr?: string | null) => {
     if (!addr) return '';
@@ -54,6 +55,16 @@ export const WalletManager: React.FC<Props> = ({
       return JSON.stringify(JSON.parse(s), null, 2);
     } catch {
       return s;
+    }
+  };
+
+  const copyDID = async (key: string, did: string) => {
+    try {
+      await navigator.clipboard.writeText(did);
+      setCopiedDidKey(key);
+      setTimeout(() => setCopiedDidKey(null), 2000);
+    } catch (err) {
+      console.error('复制 DID 失败:', err);
     }
   };
 
@@ -118,7 +129,17 @@ export const WalletManager: React.FC<Props> = ({
                       <li key={`${cell.txHash}-${cell.index}-${i}`}>
                         <div>{cell.txHash} [{cell.index}] • {cell.capacity} CKB</div>
                         <div className="break-all text-gray-600">data: {cell.data}</div>
-                        <div className="break-all text-gray-600 font-bold">DID: {cell.did}</div>
+                        <div className="break-all text-gray-600 font-bold flex items-center gap-2">DID: <span className="font-mono">{cell.did}</span>
+                          <button
+                            onClick={() => copyDID(`${cell.txHash}-${cell.index}`, cell.did)}
+                            className="text-blue-600 hover:text-blue-800 text-xs underline"
+                          >
+                            复制
+                          </button>
+                          {copiedDidKey === `${cell.txHash}-${cell.index}` && (
+                            <span className="text-green-600 text-xs">已复制</span>
+                          )}
+                        </div>
                         {cell.didMetadata && (
                           <div className="text-gray-700">
                             <div className="flex items-center gap-2 mb-1">
