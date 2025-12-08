@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { useWallet } from '@/provider/WalletProvider';
 import { buildTxUrl } from '@/utils/explorer';
+import { storage } from '@/utils/storage';
+import { DidCkbData } from '@/utils/didMolecule';
+import * as cbor from '@ipld/dag-cbor';
+import { getDidKeyFromPublicHex } from '@/utils/didKey';
+import { ccc } from '@ckb-ccc/core';
 
 interface Props {
   isConnected: boolean;
@@ -28,6 +33,7 @@ export const WalletManager: React.FC<Props> = ({
   const [copiedDocKey, setCopiedDocKey] = useState<string | null>(null);
   const [copiedDidKey, setCopiedDidKey] = useState<string | null>(null);
   const [destroyed, setDestroyed] = useState<Record<string, { txHash: string; url: string }>>({});
+  const [updated, setUpdated] = useState<Record<string, { txHash: string; url: string }>>({});
   const shortAddr = (addr?: string | null) => {
     if (!addr) return '';
     const a = addr.replace(/^\s+|\s+$/g, '');
@@ -79,7 +85,7 @@ export const WalletManager: React.FC<Props> = ({
     }
   };
 
-  const { destroyDidCell } = useWallet();
+  const { destroyDidCell, updateDidCell } = useWallet();
   const destroyCell = async (txHash: string, index: number) => {
     const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
     if (!ok) return;
@@ -89,6 +95,39 @@ export const WalletManager: React.FC<Props> = ({
       setDestroyed((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
     } catch (err) {
       console.error('销毁失败:', err);
+      alert((err as Error).message);
+    }
+  };
+  const updateCell = async (cell: { txHash: string; index: number; didMetadata: string; data: string }) => {
+    try {
+      const kd = storage.getKey();
+      if (!kd) {
+        alert('请先在密钥管理器创建或导入密钥');
+        return;
+      }
+      const didKey = getDidKeyFromPublicHex(kd.publicKey);
+      if (!didKey) {
+        alert('无法计算 DID Key');
+        return;
+      }
+      const ok = window.confirm(`更新 DID Metadata 属于危险操作，可能不可恢复。\n将把 verificationMethods.atproto 更新为当前密钥管理器中的 DID Key：\n${didKey}\n确认继续？`);
+      if (!ok) return;
+      const newMetadata = JSON.parse(cell.didMetadata || '{}');
+      if (!newMetadata.verificationMethods) newMetadata.verificationMethods = {};
+      newMetadata.verificationMethods.atproto = didKey;
+
+      const cborBytes = cbor.encode(newMetadata);
+      const docHex = ccc.hexFrom(cborBytes);
+
+      const oldDidData = DidCkbData.fromBytes(cell.data || '0x');
+      const newDid = DidCkbData.from({ value: { document: docHex, localId: oldDidData.value.localId ?? undefined } });
+      const newOutputData = newDid.toBytes();
+
+      const sent = await updateDidCell(cell.txHash, cell.index, ccc.hexFrom(newOutputData));
+      const key = `${cell.txHash}-${cell.index}`;
+      setUpdated((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
+    } catch (err) {
+      console.error('更新失败:', err);
       alert((err as Error).message);
     }
   };
@@ -174,7 +213,7 @@ export const WalletManager: React.FC<Props> = ({
                             onClick={() => destroyCell(cell.txHash, cell.index)}
                             className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 px-2 rounded"
                           >
-                            销毁该 DID Cell
+                            销毁
                           </button>
                           {destroyed[`${cell.txHash}-${cell.index}`] && (
                             <div className="mt-1 text-xs text-gray-700">
@@ -182,6 +221,20 @@ export const WalletManager: React.FC<Props> = ({
                               <a href={destroyed[`${cell.txHash}-${cell.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
                             </div>
                           )}
+                          <div className="mt-2">
+                            <button
+                              onClick={() => updateCell({ txHash: cell.txHash, index: cell.index, didMetadata: cell.didMetadata, data: cell.data })}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1 px-2 rounded"
+                            >
+                              更新
+                            </button>
+                            {updated[`${cell.txHash}-${cell.index}`] && (
+                              <span className="ml-2 text-xs">
+                                <div>已提交交易：<span className="font-mono break-all">{updated[`${cell.txHash}-${cell.index}`].txHash}</span></div>
+                                <a href={updated[`${cell.txHash}-${cell.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </li>
                     ))}

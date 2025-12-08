@@ -15,6 +15,7 @@ interface WalletContextValue {
   disconnect: () => Promise<void> | void;
   fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>;
   destroyDidCell: (txHash: string, index: number) => Promise<string>;
+  updateDidCell: (txHash: string, index: number, newOutputData: string) => Promise<string>;
 }
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -135,6 +136,44 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
       await destoryDidTx.completeInputsByCapacity(signer);
       await destoryDidTx.completeFeeBy(signer);
       const sent = await signer.sendTransaction(destoryDidTx);
+      return sent;
+    },
+    updateDidCell: async (txHash: string, index: number, newOutputData: string) => {
+      if (!signer) throw new Error('钱包未连接');
+      const didDepCell = network === 'mainnet' ? {
+        outPoint: {
+          txHash: '0xe2f74c56cdc610d2b9fe898a96a80118845f5278605d7f9ad535dad69ae015bf',
+          index: '0x0',
+        },
+        depType: 'code',
+      } : {
+        outPoint: {
+          txHash: '0x0e7a830e2d5ebd05cd45a55f93f94559edea0ef1237b7233f49f7facfb3d6a6c',
+          index: '0x0',
+        },
+        depType: 'code',
+      };
+      const client = signer.client;
+      const tx = await client.getTransaction(txHash);
+      const originalOutput = tx?.transaction?.outputs?.[Number(index)];
+      if (!originalOutput) throw new Error('无法获取原始输出');
+      const updateTx = ccc.Transaction.from({
+        cellDeps: [didDepCell],
+        inputs: [
+          {
+            previousOutput: {
+              txHash,
+              index,
+            },
+            since: 0,
+          }
+        ],
+        outputs: [originalOutput],
+        outputsData: [newOutputData],
+      });
+      await updateTx.completeInputsByCapacity(signer);
+      await updateTx.completeFeeBy(signer);
+      const sent = await signer.sendTransaction(updateTx);
       return sent;
     },
   };
