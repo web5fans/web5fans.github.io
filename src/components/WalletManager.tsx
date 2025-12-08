@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useWallet } from '@/provider/WalletProvider';
 import { buildTxUrl } from '@/utils/explorer';
-import { DidCkbData } from '@/utils/didMolecule';
-import * as cbor from "@ipld/dag-cbor";
 
 interface Props {
   isConnected: boolean;
@@ -12,7 +10,7 @@ interface Props {
   onDisconnect: () => void;
   loading: boolean;
   network?: 'mainnet' | 'testnet';
-  onFetchLiveCells?: () => Promise<Array<{ txHash: string; index: number; capacity: string; data: string }>>;
+  onFetchLiveCells?: () => Promise<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>;
 }
 
 export const WalletManager: React.FC<Props> = ({
@@ -26,17 +24,16 @@ export const WalletManager: React.FC<Props> = ({
   onFetchLiveCells,
 }) => {
   const [copiedTip, setCopiedTip] = useState(false);
-  const [cells, setCells] = useState<Array<{ txHash: string; index: number; capacity: string; data: string }>>([]);
-  const [parsed, setParsed] = useState<Record<string, string>>({});
+  const [didCells, setDIDCells] = useState<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>([]);
   const [copiedDocKey, setCopiedDocKey] = useState<string | null>(null);
   const [destroyed, setDestroyed] = useState<Record<string, { txHash: string; url: string }>>({});
-  const short = (addr?: string | null) => {
+  const shortAddr = (addr?: string | null) => {
     if (!addr) return '';
     const a = addr.replace(/^\s+|\s+$/g, '');
     if (a.length <= 16) return a;
     return `${a.slice(0, 8)}...${a.slice(-8)}`;
   };
-  const copy = async () => {
+  const copyAddr = async () => {
     if (!address) return;
     try {
       await navigator.clipboard.writeText(address);
@@ -49,20 +46,7 @@ export const WalletManager: React.FC<Props> = ({
   const fetchCells = async () => {
     if (!onFetchLiveCells) return;
     const list = await onFetchLiveCells();
-    setCells(list);
-    const p: Record<string, string> = {};
-    for (const c of list) {
-      try {
-        const didData = DidCkbData.fromBytes(c.data);
-        const didDoc = didData.value.document;
-        const didDocJson = cbor.decode(new Uint8Array(didDoc.slice(2).match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))));
-        p[`${c.txHash}-${c.index}`] = JSON.stringify(didDocJson);
-      } catch (err) {
-        console.error('解析DID数据失败:', err);
-        p[`${c.txHash}-${c.index}`] = '解析失败';
-      }
-    }
-    setParsed(p);
+    setDIDCells(list);
   };
 
   const formatJson = (s: string) => {
@@ -73,18 +57,18 @@ export const WalletManager: React.FC<Props> = ({
     }
   };
 
-  const copyDoc = async (key: string) => {
-    const content = parsed[key] ? formatJson(parsed[key]) : '';
+  const copyDIDMetadata = async (key: string) => {
+    const content = didCells.find(c => `${c.txHash}-${c.index}` === key)?.didMetadata || '';
     try {
       await navigator.clipboard.writeText(content);
       setCopiedDocKey(key);
       setTimeout(() => setCopiedDocKey(null), 2000);
     } catch (err) {
-      console.error('复制 DID Document 失败:', err);
+      console.error('复制 DID Metadata 失败:', err);
     }
   };
 
-  const { destroyDidCell, computeDid } = useWallet();
+  const { destroyDidCell } = useWallet();
   const destroyCell = async (txHash: string, index: number) => {
     const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
     if (!ok) return;
@@ -97,49 +81,6 @@ export const WalletManager: React.FC<Props> = ({
       alert((err as Error).message);
     }
   };
-
-  const DidLine: React.FC<{ txHash: string; index: number }> = ({ txHash, index }) => {
-    const [did, setDid] = useState<string>('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    useEffect(() => {
-      const key = `${txHash}-${index}`;
-      let cache: Record<string, string> = {};
-      try { const raw = localStorage.getItem('did_ckb_cache'); cache = raw ? JSON.parse(raw) : {}; } catch {}
-      if (cache[key]) { setDid(cache[key]); return; }
-      let mounted = true;
-      (async () => {
-        try {
-          setLoading(true);
-          setError(null);
-          const d = await computeDid(txHash, index);
-          if (!mounted) return;
-          setDid(d);
-          cache[key] = d;
-          try { localStorage.setItem('did_ckb_cache', JSON.stringify(cache)); } catch {}
-        } catch (e) {
-          if (!mounted) return;
-          setError((e as Error).message);
-        } finally {
-          if (!mounted) return;
-          setLoading(false);
-        }
-      })();
-      return () => { mounted = false; };
-    }, [txHash, index]);
-    return (
-      <div className="mt-2 text-xs text-gray-700">
-        <span className="font-semibold">DID：</span>
-        {did ? (
-          <span className="font-mono break-all">{did}</span>
-        ) : (
-          <span className="text-gray-500">计算中...</span>
-        )}
-        {loading && <span className="ml-2 text-gray-500">计算中...</span>}
-        {error && <span className="ml-2 text-red-600">{error}</span>}
-      </div>
-    );
-  };
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
@@ -151,12 +92,10 @@ export const WalletManager: React.FC<Props> = ({
           {isConnected ? (
             <div>
               <div className="mb-1">
-                地址：<span className="font-mono">{short(address)}</span>
+                地址：<span className="font-mono">{shortAddr(address)}</span>
               </div>
-              <div>余额：{balance ?? '加载中...'} CKB</div>
-              <div className="mt-1">网络：{network ?? '-'}</div>
               <button
-                onClick={copy}
+                onClick={copyAddr}
                 className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
               >
                 复制完整地址
@@ -164,50 +103,52 @@ export const WalletManager: React.FC<Props> = ({
               {copiedTip && (
                 <div className="mt-1 text-green-600 text-sm">已复制完整地址</div>
               )}
+              <div>余额：{balance ?? '加载中...'} CKB</div>
+              <div className="mt-1">网络：{network ?? '-'}</div>
               <div className="mt-3">
                 <div className="mb-2 flex items-center gap-2">
-                  <span>DID Cells：</span>
+                  <span>DID Cells:</span>
                   <button onClick={fetchCells} className="text-blue-600 hover:text-blue-800 underline">刷新</button>
                 </div>
-                {cells.length === 0 ? (
+                {didCells.length === 0 ? (
                   <div className="text-gray-500">暂无数据</div>
                 ) : (
                   <ul className="space-y-2 font-mono text-xs">
-                    {cells.map((c, i) => (
-                      <li key={`${c.txHash}-${c.index}-${i}`}>
-                        <div>{c.txHash} [{c.index}] • {c.capacity} CKB</div>
-                        <div className="break-all text-gray-600">data: {c.data}</div>
-                        {parsed[`${c.txHash}-${c.index}`] && (
+                    {didCells.map((cell, i) => (
+                      <li key={`${cell.txHash}-${cell.index}-${i}`}>
+                        <div>{cell.txHash} [{cell.index}] • {cell.capacity} CKB</div>
+                        <div className="break-all text-gray-600">data: {cell.data}</div>
+                        <div className="break-all text-gray-600 font-bold">DID: {cell.did}</div>
+                        {cell.didMetadata && (
                           <div className="text-gray-700">
-                            <DidLine txHash={c.txHash} index={c.index} />
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold">DID Document</span>
+                              <span className="font-semibold">DID Metadata</span>
                               <button
-                                onClick={() => copyDoc(`${c.txHash}-${c.index}`)}
+                                onClick={() => copyDIDMetadata(`${cell.txHash}-${cell.index}`)}
                                 className="text-blue-600 hover:text-blue-800 text-xs underline"
                               >
                                 复制
                               </button>
-                              {copiedDocKey === `${c.txHash}-${c.index}` && (
+                              {copiedDocKey === `${cell.txHash}-${cell.index}` && (
                                 <span className="text-green-600 text-xs">已复制</span>
                               )}
                             </div>
                             <pre className="whitespace-pre-wrap break-words bg-gray-100 border rounded p-2 text-gray-800">
-                              {formatJson(parsed[`${c.txHash}-${c.index}`])}
+                              {formatJson(cell.didMetadata)}
                             </pre>
                           </div>
                         )}
                         <div className="mt-2">
                           <button
-                            onClick={() => destroyCell(c.txHash, c.index)}
+                            onClick={() => destroyCell(cell.txHash, cell.index)}
                             className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 px-2 rounded"
                           >
                             销毁该 DID Cell
                           </button>
-                          {destroyed[`${c.txHash}-${c.index}`] && (
+                          {destroyed[`${cell.txHash}-${cell.index}`] && (
                             <div className="mt-1 text-xs text-gray-700">
-                              <div>已提交交易：<span className="font-mono break-all">{destroyed[`${c.txHash}-${c.index}`].txHash}</span></div>
-                              <a href={destroyed[`${c.txHash}-${c.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
+                              <div>已提交交易：<span className="font-mono break-all">{destroyed[`${cell.txHash}-${cell.index}`].txHash}</span></div>
+                              <a href={destroyed[`${cell.txHash}-${cell.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
                             </div>
                           )}
                         </div>

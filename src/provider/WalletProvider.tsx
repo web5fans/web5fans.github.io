@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState, useContext } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import { base32 } from "@scure/base";
+import { DidCkbData } from '@/utils/didMolecule';
+import * as cbor from "@ipld/dag-cbor";
 
 type Network = 'mainnet' | 'testnet';
 
@@ -11,9 +13,8 @@ interface WalletContextValue {
   network: Network;
   connect: () => Promise<void> | void;
   disconnect: () => Promise<void> | void;
-  fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; capacity: string; data: string }>>;
+  fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>;
   destroyDidCell: (txHash: string, index: number) => Promise<string>;
-  computeDid: (txHash: string, outIndex: number) => Promise<string>;
 }
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -80,13 +81,22 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
             args: "0x",
           },
         }, true, 'desc', 10);
-        const result: Array<{ txHash: string; index: number; capacity: string; data: string }> = [];
+        const result: Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }> = [];
         for await (const cell of cells) {
+          const data = cell.outputData ?? '0x';
+          const didData = DidCkbData.fromBytes(data);
+          const didDoc = didData.value.document;
+          const didDocJson = cbor.decode(ccc.bytesFrom(didDoc));
+          const didMetadata = JSON.stringify(didDocJson);
+          const args = ccc.bytesFrom(cell.cellOutput.type.args.slice(0, 42)); // 20 bytes Type args
+          const did = `did:ckb:${base32.encode(args).toLowerCase()}`;
           result.push({
             txHash: cell.outPoint.txHash,
             index: Number(cell.outPoint.index),
             capacity: ccc.fixedPointToString(cell.cellOutput.capacity),
-            data: cell.outputData ?? '0x',
+            did,
+            data,
+            didMetadata,
           });
         }
         return result;
@@ -126,18 +136,6 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
       await destoryDidTx.completeFeeBy(signer);
       const sent = await signer.sendTransaction(destoryDidTx);
       return sent;
-    },
-    computeDid: async (txHash: string, outIndex: number) => {
-      if (!signer) throw new Error('钱包未连接');
-      const cccClient = signer.client; 
-      const tx = await cccClient.getTransaction(txHash);
-      if (!tx?.transaction?.inputs?.length) throw new Error('无法获取交易输入');
-      const input0 = tx.transaction.inputs[0];
-      const typeId = ccc.hashTypeId(input0, outIndex);
-
-      const args = ccc.bytesFrom(typeId.slice(0, 42)); // 20 bytes Type ID
-      const did = base32.encode(args).toLowerCase()
-      return `did:ckb:${did}`;
     },
   };
 
