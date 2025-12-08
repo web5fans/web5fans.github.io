@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useWallet } from '@/provider/WalletProvider';
 import { buildTxUrl } from '@/utils/explorer';
 import { DidCkbData } from '@/utils/didMolecule';
@@ -102,25 +102,38 @@ export const WalletManager: React.FC<Props> = ({
     const [did, setDid] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const d = await computeDid(txHash, index);
-        setDid(d);
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    };
+    useEffect(() => {
+      const key = `${txHash}-${index}`;
+      let cache: Record<string, string> = {};
+      try { const raw = localStorage.getItem('did_ckb_cache'); cache = raw ? JSON.parse(raw) : {}; } catch {}
+      if (cache[key]) { setDid(cache[key]); return; }
+      let mounted = true;
+      (async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const d = await computeDid(txHash, index);
+          if (!mounted) return;
+          setDid(d);
+          cache[key] = d;
+          try { localStorage.setItem('did_ckb_cache', JSON.stringify(cache)); } catch {}
+        } catch (e) {
+          if (!mounted) return;
+          setError((e as Error).message);
+        } finally {
+          if (!mounted) return;
+          setLoading(false);
+        }
+      })();
+      return () => { mounted = false; };
+    }, [txHash, index]);
     return (
       <div className="mt-2 text-xs text-gray-700">
         <span className="font-semibold">DID：</span>
         {did ? (
           <span className="font-mono break-all">{did}</span>
         ) : (
-          <button onClick={load} className="text-blue-600 underline">计算</button>
+          <span className="text-gray-500">计算中...</span>
         )}
         {loading && <span className="ml-2 text-gray-500">计算中...</span>}
         {error && <span className="ml-2 text-red-600">{error}</span>}
