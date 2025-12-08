@@ -1,7 +1,6 @@
 import React from 'react';
 import { KeyManager } from '../components/KeyManager';
 import { WalletManager } from '../components/WalletManager';
-import { DidManager } from '@/components/DidManager';
 import { SigningKeyData } from '../utils/storage';
 import { useWallet } from '@/provider/WalletProvider';
 
@@ -46,7 +45,7 @@ export const Home: React.FC = () => {
               onClick={() => document.getElementById('wallet-manager')?.scrollIntoView({ behavior: 'smooth' })}
               className="bg-transparent border-2 border-white text-white font-semibold px-8 py-3 rounded-lg hover:bg-white hover:text-blue-800 transition-all duration-200"
             >
-              钱包管理
+              DID 身份管理
             </button>
           </div>
         </div>
@@ -101,11 +100,11 @@ export const Home: React.FC = () => {
       </section>
 
       {/* wallet Manager Section */}
-      <section id="wallet-manager" className="py-16 px-4">
+      <section id="did-manager" className="py-16 px-4">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-white mb-4">
-              钱包连接管理器
+              DID 身份管理器
             </h2>
             <p className="text-blue-100 text-lg">
               连接您的 CKB 钱包以管理您的数字身份
@@ -122,21 +121,6 @@ export const Home: React.FC = () => {
             onFetchLiveCells={fetchLiveCells}
           />
           
-        </div>
-      </section>
-
-      {/* DID Manager Section */}
-      <section id="did-manager" className="py-16 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              DID 身份管理
-            </h2>
-            <p className="text-blue-100 text-lg">
-              通过已连接的钱包销毁指定的 DID Cell（危险操作）
-            </p>
-          </div>
-          <DidManager />
         </div>
       </section>
 

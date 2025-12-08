@@ -51,7 +51,9 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
   const disconnect = useCallback(async () => {
     try {
       await cccDisconnect();
-    } catch {}
+    } catch {
+      // 忽略断开连接时的错误
+    }
     setIsConnected(false);
     setAddress(null);
     setBalance(null);

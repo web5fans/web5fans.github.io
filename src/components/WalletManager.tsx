@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useWallet } from '@/provider/WalletProvider';
+import { buildTxUrl } from '@/utils/explorer';
 import { DidCkbData } from '@/utils/didMolecule';
 import * as cbor from "@ipld/dag-cbor";
 
@@ -27,6 +29,7 @@ export const WalletManager: React.FC<Props> = ({
   const [cells, setCells] = useState<Array<{ txHash: string; index: number; capacity: string; data: string }>>([]);
   const [parsed, setParsed] = useState<Record<string, string>>({});
   const [copiedDocKey, setCopiedDocKey] = useState<string | null>(null);
+  const [destroyed, setDestroyed] = useState<Record<string, { txHash: string; url: string }>>({});
   const short = (addr?: string | null) => {
     if (!addr) return '';
     const a = addr.replace(/^\s+|\s+$/g, '');
@@ -80,11 +83,25 @@ export const WalletManager: React.FC<Props> = ({
       console.error('复制 DID Document 失败:', err);
     }
   };
+
+  const { destroyDidCell } = useWallet();
+  const destroyCell = async (txHash: string, index: number) => {
+    const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
+    if (!ok) return;
+    try {
+      const sent = await destroyDidCell(txHash, index);
+      const key = `${txHash}-${index}`;
+      setDestroyed((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
+    } catch (err) {
+      console.error('销毁失败:', err);
+      alert((err as Error).message);
+    }
+  };
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
         <span className="mr-2">👛</span>
-        钱包连接管理
+        DID 身份管理
       </h2>
       <div className="flex items-start justify-between">
         <div className="text-sm text-gray-600">
@@ -136,6 +153,20 @@ export const WalletManager: React.FC<Props> = ({
                             </pre>
                           </div>
                         )}
+                        <div className="mt-2">
+                          <button
+                            onClick={() => destroyCell(c.txHash, c.index)}
+                            className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 px-2 rounded"
+                          >
+                            销毁该 DID Cell
+                          </button>
+                          {destroyed[`${c.txHash}-${c.index}`] && (
+                            <div className="mt-1 text-xs text-gray-700">
+                              <div>已提交交易：<span className="font-mono break-all">{destroyed[`${c.txHash}-${c.index}`].txHash}</span></div>
+                              <a href={destroyed[`${c.txHash}-${c.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
+                            </div>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
