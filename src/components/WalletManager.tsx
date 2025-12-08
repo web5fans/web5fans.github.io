@@ -127,7 +127,17 @@ export const WalletManager: React.FC<Props> = ({
                   <ul className="space-y-2 font-mono text-xs">
                     {didCells.map((cell, i) => (
                       <li key={`${cell.txHash}-${cell.index}-${i}`}>
-                        <div>{cell.txHash} [{cell.index}] • {cell.capacity} CKB</div>
+                        <div>
+                          <a
+                            href={buildTxUrl(cell.txHash, network ?? 'testnet')}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:text-blue-800 underline"
+                          >
+                            {cell.txHash}
+                          </a>
+                          {` [${cell.index}] • ${cell.capacity} CKB`}
+                        </div>
                         <div className="break-all text-gray-600">data: {cell.data}</div>
                         <div className="break-all text-gray-600 font-bold flex items-center gap-2">DID: <span className="font-mono">{cell.did}</span>
                           <button
