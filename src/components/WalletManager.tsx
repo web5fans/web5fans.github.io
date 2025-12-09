@@ -90,12 +90,38 @@ export const WalletManager: React.FC<Props> = ({
   };
 
   const { destroyDidCell, updateDidCell } = useWallet();
-  const destroyCell = async (txHash: string, index: number) => {
-    const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
-    if (!ok) return;
+  const destroyCell = async (cell: { txHash: string; index: number; did: string; didMetadata: string }) => {
     try {
-      const sent = await destroyDidCell(txHash, index);
-      const key = `${txHash}-${index}`;
+      let handle = '';
+      try {
+        const meta = JSON.parse(cell.didMetadata || '{}');
+        const aka = meta?.alsoKnownAs;
+        const list = Array.isArray(aka) ? aka : (aka ? [aka] : []);
+        const at = list.find((v: string) => typeof v === 'string' && v.startsWith('at://')) || '';
+        handle = at.replace(/^at:\/\//, '');
+      } catch {
+        handle = '';
+      }
+
+      if (handle) {
+        try {
+          const resp = await fetch(`https://${handle}/.well-known/atproto-did`);
+          if (resp.ok) {
+            const text = (await resp.text()).trim();
+            if (text && text === cell.did) {
+              alert('该 DID 仍在使用（通过 atproto handle 解析到相同 DID），禁止删除。');
+              return;
+            }
+          }
+        } catch {
+          // 忽略网络/CORS错误，继续后续确认流程
+        }
+      }
+
+      const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
+      if (!ok) return;
+      const sent = await destroyDidCell(cell.txHash, cell.index);
+      const key = `${cell.txHash}-${cell.index}`;
       setDestroyed((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
     } catch (err) {
       console.error('销毁失败:', err);
@@ -264,7 +290,7 @@ export const WalletManager: React.FC<Props> = ({
                         )}
                         <div className="mt-2">
                           <button
-                            onClick={() => destroyCell(cell.txHash, cell.index)}
+                            onClick={() => destroyCell({ txHash: cell.txHash, index: cell.index, did: cell.did, didMetadata: cell.didMetadata })}
                             className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 px-2 rounded"
                           >
                             销毁
