@@ -5,6 +5,7 @@ import { storage } from '@/utils/storage';
 import { DidCkbData } from '@/utils/didMolecule';
 import * as cbor from '@ipld/dag-cbor';
 import { getDidKeyFromPublicHex } from '@/utils/didKey';
+import { encryptData } from '@/utils/crypto';
 import { ccc } from '@ckb-ccc/core';
 
 interface Props {
@@ -34,6 +35,9 @@ export const WalletManager: React.FC<Props> = ({
   const [copiedDidKey, setCopiedDidKey] = useState<string | null>(null);
   const [destroyed, setDestroyed] = useState<Record<string, { txHash: string; url: string }>>({});
   const [updated, setUpdated] = useState<Record<string, { txHash: string; url: string }>>({});
+  const [showPwdModalKey, setShowPwdModalKey] = useState<string | null>(null);
+  const [pwdInput, setPwdInput] = useState('');
+  const [exporting, setExporting] = useState(false);
   const shortAddr = (addr?: string | null) => {
     if (!addr) return '';
     const a = addr.replace(/^\s+|\s+$/g, '');
@@ -131,7 +135,45 @@ export const WalletManager: React.FC<Props> = ({
       alert((err as Error).message);
     }
   };
+  const exportCredential = async (cell: { did: string }) => {
+    const kd = storage.getKey();
+    if (!kd) {
+      alert('请先在密钥管理器创建或导入密钥');
+      return;
+    }
+    setShowPwdModalKey(cell.did);
+  };
+  const confirmExport = async () => {
+    if (!showPwdModalKey) return;
+    try {
+      setExporting(true);
+      const kd = storage.getKey();
+      if (!kd) throw new Error('密钥不存在');
+      const payload = {
+        did: showPwdModalKey,
+        signKey: '0x' + kd.privateKey,
+        walletAddress: address ?? '',
+      };
+      const json = JSON.stringify(payload);
+      const base64 = await encryptData(json, pwdInput.trim());
+      if (base64 === 'error') throw new Error('加密失败');
+      const blob = new Blob([base64], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'web5-login-credential.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+      setShowPwdModalKey(null);
+      setPwdInput('');
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
+    <>
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
         <span className="mr-2">👛</span>
@@ -235,6 +277,14 @@ export const WalletManager: React.FC<Props> = ({
                               </span>
                             )}
                           </div>
+                          <div className="mt-2">
+                            <button
+                              onClick={() => exportCredential({ did: cell.did })}
+                              className="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold py-1 px-2 rounded"
+                            >
+                              导出登录凭证
+                            </button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -267,5 +317,38 @@ export const WalletManager: React.FC<Props> = ({
         </div>
       </div>
     </div>
+    {showPwdModalKey && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/40"></div>
+        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
+          <div className="text-lg font-semibold text-gray-800 mb-3">设置凭证导出密码</div>
+          <input
+            type="password"
+            value={pwdInput}
+            onChange={e => setPwdInput(e.target.value)}
+            placeholder="至少 8 位"
+            className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="mt-4 flex gap-2 justify-end">
+            <button
+              onClick={() => { setShowPwdModalKey(null); setPwdInput(''); }}
+              disabled={exporting}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg border"
+            >
+              取消
+            </button>
+            <button
+              onClick={confirmExport}
+              disabled={exporting || pwdInput.trim().length < 8}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2 px-4 rounded-lg"
+            >
+              {exporting ? '导出中...' : '确认导出'}
+            </button>
+          </div>
+          <div className="mt-2 text-xs text-gray-500">使用 AES-GCM + PBKDF2 强化加密，务必保存好密码。</div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
