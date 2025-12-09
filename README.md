@@ -1,14 +1,14 @@
-# Web5 教程网站
+# Web5 DID 工具箱
 
-一个交互式的 Web5 教程网站，专注于教育用户了解 Web5 的核心概念，特别是去中心化身份和加密技术。
+一个交互式的 Web5 DID 工具网站，用户可以对自己的 DID 进行管理和操作。
 
 ## 🌟 功能特点
 
-- **密钥管理**: 使用 secp256k1 算法创建和管理数字签名密钥
-- **教程系统**: 结构化的 Web5 概念讲解和实践指导
-- **交互式体验**: 用户可以直接在浏览器中生成和操作密钥
+- **密钥管理**: 使用 secp256k1 算法创建和管理数字签名密钥对
+- **DID 管理**: 更新和删除 DID 单元格
+- **交互式体验**: 用户可以直接在浏览器中生成和操作密钥对
 - **响应式设计**: 适配桌面端、平板端和移动端
-- **本地存储**: 私钥安全存储在浏览器 localStorage 中
+- **本地存储**: 本网站无后端，私钥存储在浏览器 localStorage 中
 
 ## 🚀 快速开始
 
@@ -51,15 +51,27 @@ npm run deploy
 
 ```
 src/
-├── components/          # React 组件
-│   ├── KeyManager.tsx   # 密钥管理组件
-│   └── TestComponent.tsx # 测试组件
-├── pages/              # 页面组件
-│   ├── Home.tsx        # 首页
-│   └── Tutorial.tsx    # 教程页面
-├── utils/              # 工具函数
-│   └── storage.ts      # 本地存储工具
-└── hooks/              # 自定义 Hooks
+├── App.tsx                  # 应用入口组件
+├── main.tsx                 # 前端入口、挂载根节点
+├── vite-env.d.ts            # Vite 类型声明
+├── components/              # 业务组件
+│   ├── WalletManager.tsx    # 钱包与 DID 管理
+│   ├── KeyManager.tsx       # 密钥管理器
+│   └── Empty.tsx            # 空状态组件
+├── provider/                # 上下文提供者
+│   └── WalletProvider.tsx   # 钱包上下文（查询/更新/销毁 DID Cells）
+├── pages/                   # 页面
+│   └── Home.tsx             # 首页
+├── utils/                   # 工具库
+│   ├── storage.ts           # 本地存储（SigningKeyData）
+│   ├── didMolecule.ts       # DID Molecule 编解码
+│   ├── didKey.ts            # DID Key 计算（did:key）
+│   ├── crypto.ts            # AES-GCM 加密与 PBKDF2 派生
+│   └── explorer.ts          # 区块链浏览器链接构建
+├── hooks/                   # 自定义 Hooks
+│   └── useTheme.ts          # 主题 Hook
+└── lib/                     # 通用库
+    └── utils.ts             # 通用工具函数
 ```
 
 ## 🔐 安全说明
@@ -77,22 +89,24 @@ src/
 - **布局**: 卡片式布局，清晰的视觉层次
 - **图标**: 简洁的线性图标配合 emoji 表情
 
-## 📚 教程内容
+## 🔧 工具介绍
 
-### Web5 基础概念
-- 什么是 Web5
-- 去中心化身份 (DID)
-- 数字签名与验证
-
-### 密钥管理实践
+### 密钥管理器
 - 生成 secp256k1 密钥对
-- 安全存储密钥
-- 使用密钥进行签名
+- 浏览器local storage存储签名密钥对
+- 展示已生成的密钥对信息
+- 导出密钥对并加密存储
+- 导入之前导出的密钥对
 
-### Web5 应用场景
-- 去中心化认证
-- 数据完整性验证
-- 下一步学习建议
+### DID 管理器
+- 连接/断开 CKB 钱包
+- 展示已连接的 CKB 钱包地址和余额
+- 展示该地址下已存在的 DID cells
+- 针对每个 DID cell 展示其 DID、DID Metadata等信息
+- 针对每个 DID cell 提供销毁，更新和导出登录凭证三个操作
+- 销毁操作用于销毁对应的 DID cell，该操作是不可逆的，用户一定要仔细确认再操作
+- 更新操作用于更新 DID Metadata 中的 DID Key。新的 DID Key 使用前面密钥管理器生成的密钥对。
+- 导出登录凭证操作用于导出 DID cell 中的登录凭证，用于后续登录 Web5 应用。
 
 ## 🛠️ 技术栈
 
@@ -110,33 +124,6 @@ src/
 - **手机端**: 375px 断点
 - **触摸优化**: 44px 最小点击区域
 
-## 🔧 开发说明
-
-### 密钥生成算法
-
-使用 ECDSA 算法和 P-256 曲线（secp256k1 的浏览器实现）生成密钥对：
-
-```typescript
-const keyPair = await window.crypto.subtle.generateKey(
-  {
-    name: 'ECDSA',
-    namedCurve: 'P-256',
-  },
-  true,
-  ['sign', 'verify']
-);
-```
-
-### 本地存储格式
-
-```typescript
-interface SigningKeyData {
-  privateKey: string;  // Hex 格式私钥
-  publicKey: string;   // Hex 格式公钥
-  createdAt: string;   // ISO 时间戳
-}
-```
-
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request 来改进这个项目。
@@ -147,6 +134,6 @@ MIT License
 
 ## 🙏 致谢
 
-- Web5 社区提供的教育资源
+- Web5 社区提供的资源和支持
 - Tailwind CSS 提供的优秀样式框架
 - Vite 提供的快速开发体验
