@@ -135,10 +135,22 @@ export const WalletManager: React.FC<Props> = ({
       alert((err as Error).message);
     }
   };
-  const exportCredential = async (cell: { did: string }) => {
+  const exportCredential = async (cell: { did: string; didMetadata: string }) => {
     const kd = storage.getKey();
     if (!kd) {
       alert('请先在密钥管理器创建或导入密钥');
+      return;
+    }
+    const currentDidKey = getDidKeyFromPublicHex(kd.publicKey);
+    try {
+      const meta = JSON.parse(cell.didMetadata || '{}');
+      const metaDidKey = meta?.verificationMethods?.atproto || '';
+      if (!metaDidKey || metaDidKey !== currentDidKey) {
+        alert('凭证导出失败：DID Metadata 中的 DID Key 与密钥管理器当前 DID Key 不一致，请先更新 DID 元数据或切换密钥。');
+        return;
+      }
+    } catch {
+      alert('凭证导出失败：DID Metadata 解析错误');
       return;
     }
     setShowPwdModalKey(cell.did);
@@ -279,7 +291,7 @@ export const WalletManager: React.FC<Props> = ({
                           </div>
                           <div className="mt-2">
                             <button
-                              onClick={() => exportCredential({ did: cell.did })}
+                              onClick={() => exportCredential({ did: cell.did, didMetadata: cell.didMetadata })}
                               className="bg-gray-700 hover:bg-gray-800 text-white text-xs font-semibold py-1 px-2 rounded"
                             >
                               导出登录凭证
