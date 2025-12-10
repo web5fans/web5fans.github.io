@@ -210,6 +210,49 @@ export const WalletManager: React.FC<Props> = ({
       setExporting(false);
     }
   };
+  const fixUsername = async (cell: { txHash: string; index: number; didMetadata: string; data: string }) => {
+    try {
+      const meta = JSON.parse(cell.didMetadata || '{}');
+      const aka = meta?.alsoKnownAs;
+      const list = Array.isArray(aka) ? aka.slice() : (aka ? [aka] : []);
+      let changed = false;
+      const newList = list.map((v: string) => {
+        if (typeof v === 'string' && v.startsWith('at://')) {
+          const h = v.replace(/^at:\/\//, '');
+          const parts = h.split('.');
+          if (parts.length > 0) {
+            const first = parts[0];
+            const lowerFirst = first.toLowerCase();
+            if (first !== lowerFirst) {
+              changed = true;
+              return 'at://' + [lowerFirst, ...parts.slice(1)].join('.');
+            }
+          }
+        }
+        return v;
+      });
+      if (!changed) {
+        alert('用户名已为小写，无需修复');
+        return;
+      }
+      const previewOld = list.filter((v: string) => typeof v === 'string' && v.startsWith('at://')).join('\n');
+      const previewNew = newList.filter((v: string) => typeof v === 'string' && v.startsWith('at://')).join('\n');
+      const ok = window.confirm(`检测到用户名包含大写字母，将全部转换为小写：\n\n原值：\n${previewOld}\n\n修复为：\n${previewNew}\n\n确认继续？`);
+      if (!ok) return;
+      meta.alsoKnownAs = Array.isArray(aka) ? newList : (newList[0] || '');
+      const cborBytes = cbor.encode(meta);
+      const docHex = ccc.hexFrom(cborBytes);
+      const oldDidData = DidCkbData.fromBytes(cell.data || '0x');
+      const newDid = DidCkbData.from({ value: { document: docHex, localId: oldDidData.value.localId ?? undefined } });
+      const newOutputData = newDid.toBytes();
+      const sent = await updateDidCell(cell.txHash, cell.index, ccc.hexFrom(newOutputData));
+      const key = `${cell.txHash}-${cell.index}`;
+      setUpdated((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
+    } catch (err) {
+      console.error('修复失败:', err);
+      alert((err as Error).message);
+    }
+  };
   return (
     <>
     <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl mx-auto mt-6">
@@ -307,6 +350,12 @@ export const WalletManager: React.FC<Props> = ({
                               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1 px-2 rounded"
                             >
                               更新
+                            </button>
+                            <button
+                              onClick={() => fixUsername({ txHash: cell.txHash, index: cell.index, didMetadata: cell.didMetadata, data: cell.data })}
+                              className="ml-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold py-1 px-2 rounded"
+                            >
+                              修复用户名
                             </button>
                             {updated[`${cell.txHash}-${cell.index}`] && (
                               <span className="ml-2 text-xs">
