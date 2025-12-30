@@ -84,21 +84,27 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
         }, true, 'desc', 10);
         const result: Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }> = [];
         for await (const cell of cells) {
-          const data = cell.outputData ?? '0x';
-          const didData = DidCkbData.fromBytes(data);
-          const didDoc = didData.value.document;
-          const didDocJson = cbor.decode(ccc.bytesFrom(didDoc));
-          const didMetadata = JSON.stringify(didDocJson);
-          const args = ccc.bytesFrom(cell.cellOutput.type.args.slice(0, 42)); // 20 bytes Type args
-          const did = `did:ckb:${base32.encode(args).toLowerCase()}`;
-          result.push({
-            txHash: cell.outPoint.txHash,
-            index: Number(cell.outPoint.index),
-            capacity: ccc.fixedPointToString(cell.cellOutput.capacity),
-            did,
-            data,
-            didMetadata,
-          });
+          const txHash = cell.outPoint.txHash;
+          const index = Number(cell.outPoint.index);
+          try {
+            const data = cell.outputData ?? '0x';
+            const didData = DidCkbData.fromBytes(data);
+            const didDoc = didData.value.document;
+            const didDocJson = cbor.decode(ccc.bytesFrom(didDoc));          
+            const didMetadata = JSON.stringify(didDocJson);
+            const args = ccc.bytesFrom(cell.cellOutput.type.args.slice(0, 42)); // 20 bytes Type args
+            const did = `did:ckb:${base32.encode(args).toLowerCase()}`;
+            result.push({
+              txHash,
+              index,
+              capacity: ccc.fixedPointToString(cell.cellOutput.capacity),
+              did,
+              data,
+              didMetadata,
+            });
+          } catch (error) {
+            console.error(`处理 cell ${txHash}:${index} 时出错:`, error);
+          }
         }
         return result;
       } catch {
