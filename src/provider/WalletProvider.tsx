@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useContext } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import { base32 } from "@scure/base";
-import { DidCkbData } from '@/utils/didMolecule';
-import * as cbor from "@ipld/dag-cbor";
 
 type Network = 'mainnet' | 'testnet';
 
@@ -13,9 +11,11 @@ interface WalletContextValue {
   network: Network;
   connect: () => Promise<void> | void;
   disconnect: () => Promise<void> | void;
-  fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>;
-  destroyDidCell: (txHash: string, index: number) => Promise<string>;
-  updateDidCell: (txHash: string, index: number, newOutputData: string) => Promise<string>;
+  fetchLiveCells: () => Promise<Array<{ txHash: string; index: number; args: string; capacity: string; did: string, data: string, didMetadata: string }>>;
+  destroyDidCell: (args: string) => Promise<string>;
+  updateDidKey: (args: string, didKey: string) => Promise<string>;
+  updateAka: (args: string, aka: string) => Promise<string>;
+  transferDidCell: (args: string, receiverAddress: string) => Promise<string>;
 }
 
 const WalletContext = React.createContext<WalletContextValue | null>(null);
@@ -74,29 +74,31 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
       if (!signer || !address) return [];
       try {
         // 仅查询 did:ckb 相关 cells：根据 codehash 过滤
-        const didCodeHash = network === 'mainnet' ? '0x4a06164dc34dccade5afe3e847a97b6db743e79f5477fa3295acf02849c5984a' : '0x510150477b10d6ab551a509b71265f3164e9fd4137fcb5a4322f49f03092c7c5';
+        const didScriptInfo = await signer.client.getKnownScript(ccc.KnownScript.DidCkb);
+        const didCodeHash = didScriptInfo?.codeHash;
+        if (!didCodeHash) throw new Error('未找到 did:ckb 脚本的 codehash');
         const cells = await signer.findCells({
           script: {
             codeHash: didCodeHash,
             hashType: 'type',
             args: "0x",
           },
-        }, true, 'desc', 10);
-        const result: Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }> = [];
+        }, true, 'desc', 20);
+        const result: Array<{ txHash: string; index: number; args: string; capacity: string; did: string, data: string, didMetadata: string }> = [];
         for await (const cell of cells) {
           const txHash = cell.outPoint.txHash;
           const index = Number(cell.outPoint.index);
           try {
             const data = cell.outputData ?? '0x';
-            const didData = DidCkbData.fromBytes(data);
-            const didDoc = didData.value.document;
-            const didDocJson = cbor.decode(ccc.bytesFrom(didDoc));          
-            const didMetadata = JSON.stringify(didDocJson);
+            const didData = ccc.didCkb.DidCkbData.decode(data);
+            const didDoc = didData.value.document;      
+            const didMetadata = JSON.stringify(didDoc);
             const args = ccc.bytesFrom(cell.cellOutput.type.args.slice(0, 42)); // 20 bytes Type args
             const did = `did:ckb:${base32.encode(args).toLowerCase()}`;
             result.push({
               txHash,
               index,
+              args: cell.cellOutput.type.args,
               capacity: ccc.fixedPointToString(cell.cellOutput.capacity),
               did,
               data,
@@ -111,75 +113,60 @@ const WalletInnerProvider: React.FC<{ children: React.ReactNode; network: Networ
         return [];
       }
     },
-    destroyDidCell: async (txHash: string, index: number) => {
+    destroyDidCell: async (args: string) => {
       if (!signer) throw new Error('钱包未连接');
-      const didDepCell = network === 'mainnet' ? {
-        outPoint: {
-          txHash: '0xe2f74c56cdc610d2b9fe898a96a80118845f5278605d7f9ad535dad69ae015bf',
-          index: '0x0',
-        },
-        depType: 'code',
-      } : {
-        outPoint: {
-          txHash: '0x0e7a830e2d5ebd05cd45a55f93f94559edea0ef1237b7233f49f7facfb3d6a6c',
-          index: '0x0',
-        },
-        depType: 'code',
-      };
-      const destoryDidTx = ccc.Transaction.from({
-        cellDeps: [didDepCell,],
-        inputs: [
-          {
-            previousOutput: {
-              txHash,
-              index,
-            },
-            since: 0,
-          }
-        ],
-        outputs: [],
-      });
-      await destoryDidTx.completeInputsByCapacity(signer);
-      await destoryDidTx.completeFeeBy(signer);
-      const sent = await signer.sendTransaction(destoryDidTx);
+      const { tx: destroyDidTx } = await ccc.didCkb.destroyDidCkb({ client: signer.client, id: args });
+      await destroyDidTx.completeInputsByCapacity(signer);
+      await destroyDidTx.completeFeeBy(signer);
+      const sent = await signer.sendTransaction(destroyDidTx);
       return sent;
     },
-    updateDidCell: async (txHash: string, index: number, newOutputData: string) => {
+    updateDidKey: async (args: string, newDidKey: string) => {
       if (!signer) throw new Error('钱包未连接');
-      const didDepCell = network === 'mainnet' ? {
-        outPoint: {
-          txHash: '0xe2f74c56cdc610d2b9fe898a96a80118845f5278605d7f9ad535dad69ae015bf',
-          index: '0x0',
+      const address = await signer.getRecommendedAddressObj();
+      const { tx: updateDidTx } = await ccc.didCkb.transferDidCkb({
+        client: signer.client,
+        id: args,
+        receiver: address.script,
+        data: (_, data) => {
+          (data.value.document as { verificationMethods: { atproto?: string } }).verificationMethods.atproto = newDidKey;
+          return data;
         },
-        depType: 'code',
-      } : {
-        outPoint: {
-          txHash: '0x0e7a830e2d5ebd05cd45a55f93f94559edea0ef1237b7233f49f7facfb3d6a6c',
-          index: '0x0',
-        },
-        depType: 'code',
-      };
-      const client = signer.client;
-      const tx = await client.getTransaction(txHash);
-      const originalOutput = tx?.transaction?.outputs?.[Number(index)];
-      if (!originalOutput) throw new Error('无法获取原始输出');
-      const updateTx = ccc.Transaction.from({
-        cellDeps: [didDepCell],
-        inputs: [
-          {
-            previousOutput: {
-              txHash,
-              index,
-            },
-            since: 0,
-          }
-        ],
-        outputs: [originalOutput],
-        outputsData: [newOutputData],
       });
-      await updateTx.completeInputsByCapacity(signer);
-      await updateTx.completeFeeBy(signer);
-      const sent = await signer.sendTransaction(updateTx);
+      await updateDidTx.completeInputsByCapacity(signer);
+      await updateDidTx.completeFeeBy(signer);
+      const sent = await signer.sendTransaction(updateDidTx);
+      return sent;
+    },
+    updateAka: async (args: string, aka: string) => {
+      if (!signer) throw new Error('钱包未连接');
+      const address = await signer.getRecommendedAddressObj();
+      const { tx: updateAkaTx } = await ccc.didCkb.transferDidCkb({
+        client: signer.client,
+        id: args,
+        receiver: address.script,
+        data: (_, data) => {
+          const akaObj = JSON.parse(aka);
+          (data.value.document as { alsoKnownAs?: Record<string, unknown> }).alsoKnownAs = akaObj;
+          return data;
+        },
+      });
+      await updateAkaTx.completeInputsByCapacity(signer);
+      await updateAkaTx.completeFeeBy(signer);
+      const sent = await signer.sendTransaction(updateAkaTx);
+      return sent;
+    },
+    transferDidCell: async (args: string, receiverAddress: string) => {
+      if (!signer) throw new Error('钱包未连接');
+      const receiver = await ccc.Address.fromString(receiverAddress.trim(), signer.client);
+      const { tx } = await ccc.didCkb.transferDidCkb({
+        client: signer.client,
+        id: args,
+        receiver: receiver.script,
+      });
+      await tx.completeInputsByCapacity(signer);
+      await tx.completeFeeBy(signer);
+      const sent = await signer.sendTransaction(tx);
       return sent;
     },
   };

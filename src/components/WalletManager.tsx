@@ -2,11 +2,8 @@ import React, { useState } from 'react';
 import { useWallet } from '@/provider/WalletProvider';
 import { buildTxUrl } from '@/utils/explorer';
 import { storage } from '@/utils/storage';
-import { DidCkbData } from '@/utils/didMolecule';
-import * as cbor from '@ipld/dag-cbor';
 import { getDidKeyFromPublicHex } from '@/utils/didKey';
 import { encryptData } from '@/utils/crypto';
-import { ccc } from '@ckb-ccc/core';
 
 interface Props {
   isConnected: boolean;
@@ -16,7 +13,7 @@ interface Props {
   onDisconnect: () => void;
   loading: boolean;
   network?: 'mainnet' | 'testnet';
-  onFetchLiveCells?: () => Promise<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>;
+  onFetchLiveCells?: () => Promise<Array<{ txHash: string; index: number; args: string; capacity: string; did: string, data: string, didMetadata: string }>>;
 }
 
 export const WalletManager: React.FC<Props> = ({
@@ -30,11 +27,12 @@ export const WalletManager: React.FC<Props> = ({
   onFetchLiveCells,
 }) => {
   const [copiedTip, setCopiedTip] = useState(false);
-  const [didCells, setDIDCells] = useState<Array<{ txHash: string; index: number; capacity: string; did: string, data: string, didMetadata: string }>>([]);
+  const [didCells, setDIDCells] = useState<Array<{ txHash: string; index: number; args: string; capacity: string; did: string, data: string, didMetadata: string }>>([]);
   const [copiedDocKey, setCopiedDocKey] = useState<string | null>(null);
   const [copiedDidKey, setCopiedDidKey] = useState<string | null>(null);
   const [destroyed, setDestroyed] = useState<Record<string, { txHash: string; url: string }>>({});
   const [updated, setUpdated] = useState<Record<string, { txHash: string; url: string }>>({});
+  const [transferred, setTransferred] = useState<Record<string, { txHash: string; url: string }>>({});
   const [showPwdModalKey, setShowPwdModalKey] = useState<string | null>(null);
   const [pwdInput, setPwdInput] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -89,8 +87,8 @@ export const WalletManager: React.FC<Props> = ({
     }
   };
 
-  const { destroyDidCell, updateDidCell } = useWallet();
-  const destroyCell = async (cell: { txHash: string; index: number; did: string; didMetadata: string }) => {
+  const { destroyDidCell, updateDidKey, updateAka, transferDidCell } = useWallet();
+  const destroyCell = async (cell: { txHash: string; index: number; args: string; did: string; didMetadata: string }) => {
     try {
       let handle = '';
       try {
@@ -120,7 +118,7 @@ export const WalletManager: React.FC<Props> = ({
 
       const ok = window.confirm('销毁 DID Cell 属于危险且不可恢复的操作，确认继续？');
       if (!ok) return;
-      const sent = await destroyDidCell(cell.txHash, cell.index);
+      const sent = await destroyDidCell(cell.args);
       const key = `${cell.txHash}-${cell.index}`;
       setDestroyed((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
     } catch (err) {
@@ -128,7 +126,7 @@ export const WalletManager: React.FC<Props> = ({
       alert((err as Error).message);
     }
   };
-  const updateCell = async (cell: { txHash: string; index: number; didMetadata: string; data: string }) => {
+  const updateCellDidKey = async (cell: { txHash: string; index: number; args: string}) => {
     try {
       const kd = storage.getKey();
       if (!kd) {
@@ -142,18 +140,8 @@ export const WalletManager: React.FC<Props> = ({
       }
       const ok = window.confirm(`更新 DID Metadata 属于危险操作，可能不可恢复。\n将把 verificationMethods.atproto 更新为当前密钥管理器中的 DID Key：\n${didKey}\n确认继续？`);
       if (!ok) return;
-      const newMetadata = JSON.parse(cell.didMetadata || '{}');
-      if (!newMetadata.verificationMethods) newMetadata.verificationMethods = {};
-      newMetadata.verificationMethods.atproto = didKey;
 
-      const cborBytes = cbor.encode(newMetadata);
-      const docHex = ccc.hexFrom(cborBytes);
-
-      const oldDidData = DidCkbData.fromBytes(cell.data || '0x');
-      const newDid = DidCkbData.from({ value: { document: docHex, localId: oldDidData.value.localId ?? undefined } });
-      const newOutputData = newDid.toBytes();
-
-      const sent = await updateDidCell(cell.txHash, cell.index, ccc.hexFrom(newOutputData));
+      const sent = await updateDidKey(cell.args, didKey);
       const key = `${cell.txHash}-${cell.index}`;
       setUpdated((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
     } catch (err) {
@@ -210,7 +198,7 @@ export const WalletManager: React.FC<Props> = ({
       setExporting(false);
     }
   };
-  const fixUsername = async (cell: { txHash: string; index: number; didMetadata: string; data: string }) => {
+  const fixUsername = async (cell: { txHash: string; index: number; args: string; didMetadata: string }) => {
     try {
       const meta = JSON.parse(cell.didMetadata || '{}');
       const aka = meta?.alsoKnownAs;
@@ -239,17 +227,26 @@ export const WalletManager: React.FC<Props> = ({
       const previewNew = newList.filter((v: string) => typeof v === 'string' && v.startsWith('at://')).join('\n');
       const ok = window.confirm(`检测到用户名包含大写字母，将全部转换为小写：\n\n原值：\n${previewOld}\n\n修复为：\n${previewNew}\n\n确认继续？`);
       if (!ok) return;
-      meta.alsoKnownAs = Array.isArray(aka) ? newList : (newList[0] || '');
-      const cborBytes = cbor.encode(meta);
-      const docHex = ccc.hexFrom(cborBytes);
-      const oldDidData = DidCkbData.fromBytes(cell.data || '0x');
-      const newDid = DidCkbData.from({ value: { document: docHex, localId: oldDidData.value.localId ?? undefined } });
-      const newOutputData = newDid.toBytes();
-      const sent = await updateDidCell(cell.txHash, cell.index, ccc.hexFrom(newOutputData));
+      const newAka = Array.isArray(aka) ? newList : (newList[0] || '');
+      const sent = await updateAka(cell.args, JSON.stringify(newAka));
       const key = `${cell.txHash}-${cell.index}`;
       setUpdated((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
     } catch (err) {
       console.error('修复失败:', err);
+      alert((err as Error).message);
+    }
+  };
+  const transferCell = async (cell: { txHash: string; index: number; args: string }) => {
+    try {
+      const addr = window.prompt('请输入新的 CKB 地址（与当前网络前缀一致）');
+      if (!addr) return;
+      const ok = window.confirm(`确认将 DID 转移到新地址 ${shortAddr(addr.trim())} ?`);
+      if (!ok) return;
+      const sent = await transferDidCell(cell.args, addr.trim());
+      const key = `${cell.txHash}-${cell.index}`;
+      setTransferred((prev) => ({ ...prev, [key]: { txHash: sent, url: buildTxUrl(sent, network ?? 'testnet') } }));
+    } catch (err) {
+      console.error('转移失败:', err);
       alert((err as Error).message);
     }
   };
@@ -333,7 +330,7 @@ export const WalletManager: React.FC<Props> = ({
                         )}
                         <div className="mt-2">
                           <button
-                            onClick={() => destroyCell({ txHash: cell.txHash, index: cell.index, did: cell.did, didMetadata: cell.didMetadata })}
+                            onClick={() => destroyCell({ txHash: cell.txHash, index: cell.index, args: cell.args, did: cell.did, didMetadata: cell.didMetadata })}
                             className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold py-1 px-2 rounded"
                           >
                             销毁
@@ -346,13 +343,19 @@ export const WalletManager: React.FC<Props> = ({
                           )}
                           <div className="mt-2">
                             <button
-                              onClick={() => updateCell({ txHash: cell.txHash, index: cell.index, didMetadata: cell.didMetadata, data: cell.data })}
+                              onClick={() => updateCellDidKey({ txHash: cell.txHash, index: cell.index, args: cell.args })}
                               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-1 px-2 rounded"
                             >
                               更新
                             </button>
                             <button
-                              onClick={() => fixUsername({ txHash: cell.txHash, index: cell.index, didMetadata: cell.didMetadata, data: cell.data })}
+                              onClick={() => transferCell({ txHash: cell.txHash, index: cell.index, args: cell.args })}
+                              className="ml-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold py-1 px-2 rounded"
+                            >
+                              转移
+                            </button>
+                            <button
+                              onClick={() => fixUsername({ txHash: cell.txHash, index: cell.index, args: cell.args, didMetadata: cell.didMetadata })}
                               className="ml-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold py-1 px-2 rounded"
                             >
                               修复用户名
@@ -361,6 +364,12 @@ export const WalletManager: React.FC<Props> = ({
                               <span className="ml-2 text-xs">
                                 <div>已提交交易：<span className="font-mono break-all">{updated[`${cell.txHash}-${cell.index}`].txHash}</span></div>
                                 <a href={updated[`${cell.txHash}-${cell.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
+                              </span>
+                            )}
+                            {transferred[`${cell.txHash}-${cell.index}`] && (
+                              <span className="ml-2 text-xs">
+                                <div>已提交交易：<span className="font-mono break-all">{transferred[`${cell.txHash}-${cell.index}`].txHash}</span></div>
+                                <a href={transferred[`${cell.txHash}-${cell.index}`].url} target="_blank" rel="noreferrer" className="text-blue-600 underline">在区块链浏览器查看</a>
                               </span>
                             )}
                           </div>

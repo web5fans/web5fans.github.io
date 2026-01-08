@@ -13,21 +13,21 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
-    "@ckb-ccc/ccc": "^1.1.22",
-    "@ckb-ccc/connector-react": "^1.0.30",
-    "@ckb-ccc/core": "^1.12.2",
-    "@web5/crypto": "^1.0.6",
+    "@ckb-ccc/ccc": "0.0.0-canary-20260109065952",
+    "@ckb-ccc/connector-react": "0.0.0-canary-20260109065952",
+    "@ckb-ccc/core": "0.0.0-canary-20260109065952",
     "@scure/base": "^2.0.0",
+    "@web5/crypto": "^1.0.6",
     "clsx": "^2.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
-    "tailwind-merge": "^3.4.0",
-    "@ipld/dag-cbor": "^9.2.5"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/postcss": "^4.1.17",
+    "@types/node": "^25.0.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.1.1",
